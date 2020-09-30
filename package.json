@@ -1,0 +1,39 @@
+{
+  "name": "sidekick-lint-bot",
+  "version": "1.0.0",
+  "description": "",
+  "author": "<politov@meetsidekick.com>",
+  "copyright": "pushplaylabs",
+  "license": "ISC",
+  "private": true,
+  "repository": "https://github.com/ppolitov/sidekick-lint-bot.git",
+  "homepage": "https://github.com/ppolitov/sidekick-lint-bot",
+  "engines": {
+    "node": ">=12"
+  },
+  "scripts": {
+    "start": "probot run ./index.js",
+    "test": "jest"
+  },
+  "dependencies": {
+    "babel-core": "^6.26.3",
+    "babel-eslint": "^10.1.0",
+    "eslint": "^7.7.0",
+    "eslint-config-airbnb-base": "^14.0.0",
+    "eslint-config-prettier": "^6.10.1",
+    "eslint-plugin-fp": "^2.3.0",
+    "eslint-plugin-import": "^2.18.2",
+    "eslint-plugin-prettier": "^3.1.2",
+    "prettier": "^1.19.1",
+    "probot": "^10.1.0"
+  },
+  "devDependencies": {
+    "jest": "^26.4.0",
+    "nock": "^13.0.4",
+    "smee-client": "^1.2.2"
+  },
+  "lint-staged": {
+    "*.js": "eslint --fix",
+    "*.{js,html,css}": "prettier --write"
+  }
+}
