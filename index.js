@@ -1,7 +1,13 @@
-const { CLIEngine } = require('eslint')
+const { ESLint } = require('eslint')
 
 const BOT_NAME = 'sidekick-lint-bot'
 
+let eslintByContext = {}
+
+/**
+ * @param {String} patchString
+ * @returns {Array}
+ */
 function getCommentPositionMap(patchString) {
   let commentPosition = 0
   let fileLinePosition = 0
@@ -32,10 +38,7 @@ async function getRepoFile(context, path, options) {
   if (options)
     Object.assign(params, options)
   const response = await context.github.repos.getContent(params)
-  if (response.status === 200) {
-    return Buffer.from(response.data.content, 'base64').toString()
-  }
-  return ''
+  return Buffer.from(response.data.content, 'base64').toString()
 }
 
 /**
@@ -43,38 +46,61 @@ async function getRepoFile(context, path, options) {
  * @param {String} owner
  * @param {String} repo
  * @param {number} number
+ * @returns {Array<Object>}
  */
-async function removeOldReview(context, owner, repo, number) {
+async function getOldBotComments(context, owner, repo, number) {
+  let oldComments = []
   const { data } = await context.github.pulls.listReviews(
     {owner, repo, pull_number: number})
-  data.forEach(async (review) => {
+  await Promise.all(data.map(async (review) => {
     if (review.user.login.indexOf(BOT_NAME) === 0) {
-      await context.github.pulls.dismissReview(
-        {owner, repo, pull_number: number, review_id: review.id, message: 'Outdated.'})
+      const { data } = await context.github.pulls.listCommentsForReview(
+        {owner, repo, pull_number: number, review_id: review.id})
+      oldComments.push(...data)
     }
-  })
+  }))
+  return oldComments
+}
+
+/**
+ * @param {Object} context
+ */
+async function initESLint(context) {
+  if (!eslintByContext[context.id]) {
+    const json = await getRepoFile(context, '.eslintrc.json')
+    const config = JSON.parse(json)
+
+    const prettierrc = await getRepoFile(context, '.prettierrc')
+    const prettierConfig = JSON.parse(prettierrc)
+    if (config.plugins.indexOf('prettier') < 0) {
+      config.plugins.push('prettier')
+    }
+    config.rules['prettier/prettier'] = ['error', prettierConfig]
+
+    eslintByContext[context.id] = new ESLint({
+      overrideConfig: config,
+      useEslintrc: false,
+    })
+  }
+  return eslintByContext[context.id]
 }
 
 /**
  * @param {Object} context
  */
 async function lint(context) {
-  const json = await getRepoFile(context, '.eslintrc.json')
-  const config = json !== '' ? JSON.parse(json) : {}
-  const eslint = new CLIEngine({
-    baseConfig: config,
-    envs: ['es2020'],
-    useEslintrc: false,
-  })
+  const { action, pull_request: pullRequest, repository } = context.payload
 
-  const { pull_request: pullRequest, repository } = context.payload
+  //if (pullRequest.state !== 'open' || pullRequest.draft || pullRequest.merged) return
+
   const { base, head, number } = pullRequest
   const [owner, repo] = repository.full_name.split('/')
 
-  const compare = await context.github.repos.compareCommits(context.repo({
-    base: base.sha,
-    head: head.sha,
-  }))
+  const ACTION_OPENED = 'opened'
+  const ref1 = action === ACTION_OPENED ? base.sha : context.payload.before
+  const ref2 = action === ACTION_OPENED ? head.sha : context.payload.after
+  const compare = await context.github.repos.compareCommits(
+    context.repo({ base: ref1, head: ref2, }))
 
   const { files } = compare.data
   const data = await Promise.all(files
@@ -93,28 +119,53 @@ async function lint(context) {
         content,
       }
     }))
+  
+  if (data.length === 0)
+    return
 
+  // Find linter errors
   const comments = []
-  data.forEach((data) => {
-    const { results: [result] } = eslint.executeOnText(data.content, data.filename)
-    const eslintErrors = result.messages
-    comments.push(...eslintErrors
-      .map(error => ({
-        path: data.filename,
-        position: data.lineMap[error.line],
-        body: `**${error.ruleId}**: ${error.message}`,
+  const eslint = await initESLint(context)
+  await Promise.all(data.map(async (patch) => {
+    const results = await eslint.lintText(patch.content, {filePath: patch.filename})
+    const eslintErrors = results[0].messages
+    const errorsByLine = eslintErrors.reduce((lines, error) => {
+      if (!lines[error.line]) lines[error.line] = []
+      lines[error.line].push(error)
+      return lines
+    }, {})
+
+    comments.push(...Object.keys(errorsByLine)
+      .sort()
+      .map(line => ({
+        path: patch.filename,
+        position: patch.lineMap[line],
+        body: errorsByLine[line]
+          .map(error => `**${error.ruleId}**: ${error.message}`)
+          .join('\n'),
       })))
-  })
+  }))
 
-  if (comments.length > 0) {
-    //await removeOldReview(context, owner, repo, number)
+  if (comments.length === 0)
+    return
 
+  // Avoid duplicates
+  const oldComments = await getOldBotComments(context, owner, repo, number)
+  const newComments = comments.filter(comment =>
+    !oldComments.some(old =>
+      old.position === comment.position &&
+      old.path === comment.path &&
+      old.body === comment.body))
+  console.log('new comments:', newComments)
+
+  // Post review comments
+  if (newComments.length > 0) {
     await context.github.pulls.createReview({
       owner,
       repo,
       pull_number: number,
       event: 'REQUEST_CHANGES',
-      comments,
+      comments: newComments,
       body: 'ESLint found some errors.',
     })
   }
