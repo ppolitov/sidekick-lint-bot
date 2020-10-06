@@ -91,7 +91,8 @@ async function initESLint(context) {
 async function lint(context) {
   const { action, pull_request: pullRequest, repository } = context.payload
 
-  //if (pullRequest.state !== 'open' || pullRequest.draft || pullRequest.merged) return
+  if (pullRequest.state !== 'open' || pullRequest.draft || pullRequest.merged)
+    return
 
   const { base, head, number } = pullRequest
   const [owner, repo] = repository.full_name.split('/')
@@ -156,7 +157,6 @@ async function lint(context) {
       old.position === comment.position &&
       old.path === comment.path &&
       old.body === comment.body))
-  console.log('new comments:', newComments)
 
   // Post review comments
   if (newComments.length > 0) {
