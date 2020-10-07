@@ -1,8 +1,11 @@
 const { ESLint } = require('eslint')
+const path = require('path')
+const objectAssignDeep = require('object-assign-deep')
 
 const BOT_NAME = 'sidekick-lint-bot'
+const ESLINTRC = '.eslintrc.json'
 
-let eslintByContext = {}
+let eslintConfigByContext = {}
 
 /**
  * @param {String} patchString
@@ -29,7 +32,7 @@ function getCommentPositionMap(patchString) {
 /**
  * Read file from a repository
  * @param {Object} context
- * @param {String} file
+ * @param {String} path
  * @param {Object=} options
  * @returns {String} file content
  */
@@ -62,27 +65,66 @@ async function getOldBotComments(context, owner, repo, number) {
   return oldComments
 }
 
+
 /**
  * @param {Object} context
+ * @param {String} path
  */
-async function initESLint(context) {
-  if (!eslintByContext[context.id]) {
-    const json = await getRepoFile(context, '.eslintrc.json')
-    const config = JSON.parse(json)
+async function getRepoJson(context, path) {
+  const json = await getRepoFile(context, path)
+  return JSON.parse(json)
+}
 
-    const prettierrc = await getRepoFile(context, '.prettierrc')
-    const prettierConfig = JSON.parse(prettierrc)
+/**
+ * @param {Object} context
+ * @param {String} filename
+ */
+async function getOptionalConfig(context, filename) {
+  const dirs = path.dirname(filename).split('/')
+  let config = {}
+  while (dirs.length > 0) {
+    const eslintrc = decodeURIComponent(dirs.join('/') + '/' + ESLINTRC)
+    let localConfig
+    try {
+      localConfig = await getRepoJson(context, eslintrc)
+    } catch (e) {
+      //console.log('getOptionalConfig: error:', e)
+    } finally {
+      if (localConfig)
+        objectAssignDeep(config, localConfig)
+    }
+    if (config.root) break
+    dirs.pop()
+  }
+  return config
+}
+
+/**
+ * @param {Object} context
+ * @param {Object} optConfig
+ */
+async function initESLint(context, optConfig) {
+  let config = eslintConfigByContext[context.id]
+  console.log('initESLint: context:', context.id, !!config)
+  if (!config) {
+    config = await getRepoJson(context, ESLINTRC)
+    const prettierConfig = await getRepoJson(context, '.prettierrc')
     if (config.plugins.indexOf('prettier') < 0) {
       config.plugins.push('prettier')
     }
     config.rules['prettier/prettier'] = ['error', prettierConfig]
-
-    eslintByContext[context.id] = new ESLint({
-      overrideConfig: config,
-      useEslintrc: false,
-    })
+    eslintConfigByContext[context.id] = config
   }
-  return eslintByContext[context.id]
+  if (optConfig.root) {
+    config = optConfig
+  } else {
+    objectAssignDeep(config, optConfig)
+  }
+  
+  return new ESLint({
+    overrideConfig: config,
+    useEslintrc: false,
+  })
 }
 
 /**
@@ -126,8 +168,9 @@ async function lint(context) {
 
   // Find linter errors
   const comments = []
-  const eslint = await initESLint(context)
   await Promise.all(data.map(async (patch) => {
+    const optConfig = await getOptionalConfig(context, patch.filename)
+    const eslint = await initESLint(context, optConfig)
     const results = await eslint.lintText(patch.content, {filePath: patch.filename})
     const eslintErrors = results[0].messages
     const errorsByLine = eslintErrors.reduce((lines, error) => {
@@ -147,6 +190,7 @@ async function lint(context) {
       })))
   }))
 
+  console.log('comments:', comments)
   if (comments.length === 0)
     return
 
@@ -158,8 +202,10 @@ async function lint(context) {
       old.path === comment.path &&
       old.body === comment.body))
 
+  console.log('newComments:', newComments)
   // Post review comments
   if (newComments.length > 0) {
+    /*
     await context.github.pulls.createReview({
       owner,
       repo,
@@ -168,6 +214,7 @@ async function lint(context) {
       comments: newComments,
       body: 'ESLint found some errors.',
     })
+    */
   }
 }
 
