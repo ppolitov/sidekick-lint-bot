@@ -154,13 +154,16 @@ async function lint(context) {
 
   const { base, head, number } = pullRequest
   const [owner, repo] = repository.full_name.split('/')
+
+  console.log()
   console.log('Lint PR:', number)
 
+  /*
   const ACTION_OPENED = 'opened'
   const ref1 = action === ACTION_OPENED ? base.sha : context.payload.before
-  const ref2 = action === ACTION_OPENED ? head.sha : context.payload.after
+  const ref2 = action === ACTION_OPENED ? head.sha : context.payload.after */
   const compare = await context.github.repos.compareCommits(
-    context.repo({ base: ref1, head: ref2, }))
+    context.repo({ base: base.sha, head: head.sha, }))
 
   const { files } = compare.data
   const data = await Promise.all(files
@@ -199,7 +202,8 @@ async function lint(context) {
         body: errorsByLine[line]
           .map(error => `**${error.ruleId}**: ${error.message}`)
           .join('\n'),
-      })))
+      }))
+      .filter(comment => typeof comment.position !== 'undefined'))
   }
 
   console.log('comments:', comments)
@@ -217,14 +221,18 @@ async function lint(context) {
   console.log('newComments:', newComments)
   // Post review comments
   if (newComments.length > 0) {
-    await context.github.pulls.createReview({
-      owner,
-      repo,
-      pull_number: number,
-      event: 'REQUEST_CHANGES',
-      comments: newComments,
-      body: 'ESLint found some errors.',
-    })
+    try {
+      await context.github.pulls.createReview({
+        owner,
+        repo,
+        pull_number: number,
+        event: 'REQUEST_CHANGES',
+        comments: newComments,
+        body: 'ESLint found some errors.',
+      })
+    } catch (e) {
+      console.error('Error createReview:', e)
+    }
   }
 }
 
