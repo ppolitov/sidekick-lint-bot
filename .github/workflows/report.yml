@@ -1,14 +1,15 @@
 name: Report
 
-on:
-  check_run:
-    types: [completed, created]
+on: [status]
+# check_run: types: [completed, created]
 
 jobs:
   report:
     runs-on: ubuntu-latest
     steps:
-      - name: Echo
-        shell: bash
+      - name: Dump
+        if: ${{ always() }}
+        env:
+          GITHUB_CONTEXT: ${{ toJson(github) }}
         run: |
-          echo "Check: ${github.event.name}"
+          echo "$GITHUB_CONTEXT"
