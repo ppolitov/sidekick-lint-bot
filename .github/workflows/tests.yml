@@ -1,0 +1,19 @@
+name: Test report
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Modules
+        shell: bash
+        run: npm install
+
+      - name: Tests
+        shell: bash
+        run: npm test

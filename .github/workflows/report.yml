@@ -1,0 +1,14 @@
+name: Test report
+
+on:
+  check_run:
+    types: [completed]
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Echo
+        shell: bash
+        run: |
+          echo "Check: ${github.event.name}"
