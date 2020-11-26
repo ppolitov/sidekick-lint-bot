@@ -1,8 +1,8 @@
-name: Test report
+name: Report
 
 on:
   check_run:
-    types: [completed]
+    types: [completed, created]
 
 jobs:
   report:
