@@ -1,0 +1,9 @@
+name: 'Pull Requests'
+description: 'Check pull requests'
+inputs:
+  token:
+    description: ''
+    required: true
+runs:
+  using: 'node12'
+  main: 'index.js'

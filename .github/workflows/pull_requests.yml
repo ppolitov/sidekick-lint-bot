@@ -1,0 +1,23 @@
+name: Check Pull Requests
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Node Modules
+        shell: bash
+        run: npm install
+        working-directory: .github/actions/pulls
+
+      - name: Check Pull Requests
+        uses: ./.github/actions/pulls
+        with:
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
