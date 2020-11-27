@@ -11,13 +11,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
+        with:
+          repository: ppolitov/pull_requests_action
+          path: actions/pulls
 
       - name: Node Modules
         shell: bash
-        run: npm install
-        working-directory: .github/actions/pulls
+        working-directory: actions/pulls
+        run: |
+          npm install
+          ls -l
 
       - name: Check Pull Requests
-        uses: ./.github/actions/pulls
+        uses: ./actions/pulls
         with:
           token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          slack_token: ${{ secrets.SLACK_ACCESS_TOKEN }}

@@ -15,9 +15,7 @@ describe('My Probot app', () => {
 
   beforeEach(() => {
     nock.disableNetConnect()
-    probot = new Probot({
-      id: 123,
-      privateKey,
+    probot = new Probot({ id: 123, privateKey,
       // disable request throttling and retries for testing
       Octokit: ProbotOctokit.defaults({
         retry: { enabled: false },
